@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Batch {
+  id           String    @id @default(cuid())
+  vendor       String
+  productName  String
+  catalogNumber String?
+  lotNumber    String
+  receivedDate DateTime
+  expiryDate   DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  aliquots     Aliquot[]
+
+  @@index([lotNumber])
+  @@index([vendor])
+}
+
+enum AliquotStatus {
+  OK
+  QUARANTINED
+  CONTAMINATED
+  CONSUMED
+}
+
+model Aliquot {
+  id             String         @id @default(cuid())
+  batchId        String
+  madeDate       DateTime
+  aliquotIndex   Int
+  volume         Float?
+  unit           String?
+  storageLocation String?
+  status         AliquotStatus  @default(OK)
+  code           String         @unique
+  createdAt      DateTime       @default(now())
+
+  batch          Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  experimentAliquots ExperimentAliquot[]
+
+  @@index([batchId])
+  @@index([code])
+  @@index([status])
+  @@index([madeDate])
+  @@index([batchId, madeDate, aliquotIndex])
+}
+
+model Experiment {
+  id            String            @id @default(cuid())
+  title         String
+  performedDate DateTime
+  operator      String?
+  notes         String?
+  createdAt     DateTime          @default(now())
+
+  aliquots      ExperimentAliquot[]
+
+  @@index([performedDate])
+}
+
+model ExperimentAliquot {
+  experimentId  String
+  aliquotId     String
+  usageNotes    String?
+  addedAt       DateTime          @default(now())
+
+  experiment    Experiment        @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  aliquot       Aliquot           @relation(fields: [aliquotId], references: [id], onDelete: Cascade)
+
+  @@id([experimentId, aliquotId])
+  @@index([aliquotId])
+}
