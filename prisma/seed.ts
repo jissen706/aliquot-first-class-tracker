@@ -1,68 +1,104 @@
 import { PrismaClient } from "@prisma/client";
-import { generateAliquotCode } from "../src/lib/codegen";
+import bcrypt from "bcryptjs";
+import { generateAliquotId } from "../src/lib/codegen";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("Seeding database...");
 
-  // Create a batch
-  const batch = await prisma.batch.create({
+  const hash = await bcrypt.hash("demo1234", 12);
+  const user = await prisma.user.create({
     data: {
-      vendor: "Sigma-Aldrich",
-      productName: "Fetal Bovine Serum",
-      catalogNumber: "F2442",
-      lotNumber: "12345ABC",
-      receivedDate: new Date("2024-01-15"),
-      expiryDate: new Date("2026-01-15"),
-      notes: "Premium grade, heat inactivated",
+      name: "Demo User",
+      email: "demo@example.com",
+      passwordHash: hash,
+      role: "scientist",
     },
   });
+  console.log("Created user: demo@example.com / demo1234");
 
-  console.log(`Created batch: ${batch.productName} (${batch.lotNumber})`);
+  const batch = await prisma.batch.create({
+    data: {
+      lotNumber: "12345ABC",
+      manufacturer: "Sigma-Aldrich",
+      supplierName: "Sigma-Aldrich",
+      supplierUrl: "https://www.sigmaaldrich.com",
+      qcStatus: "PENDING_QC",
+      receivedDate: new Date("2024-01-15"),
+      expiryDate: new Date("2026-01-15"),
+      notes: "Fetal Bovine Serum, premium grade",
+    },
+  });
+  console.log(`Created batch: ${batch.lotNumber}`);
 
-  // Generate 5 aliquots
-  const madeDate = new Date("2024-01-18");
+  const sample = await prisma.sample.create({
+    data: {
+      name: "Fetal Bovine Serum",
+      typeCategory: "Serum",
+      batchId: batch.id,
+      manufacturer: "Sigma-Aldrich",
+      supplierName: "Sigma-Aldrich",
+      supplierUrl: "https://www.sigmaaldrich.com",
+      notes: "FBS",
+    },
+  });
+  console.log(`Created sample: ${sample.name}`);
+
   const aliquots = [];
-
+  const madeDate = new Date("2024-01-18");
   for (let i = 1; i <= 5; i++) {
-    const code = await generateAliquotCode(
-      batch.productName,
+    const aliquotId = await generateAliquotId(
+      sample.name,
       batch.lotNumber,
       madeDate,
       i
     );
-
-    const aliquot = await prisma.aliquot.create({
+    const a = await prisma.aliquot.create({
       data: {
+        aliquotId,
+        sampleId: sample.id,
         batchId: batch.id,
-        madeDate,
-        aliquotIndex: i,
-        volume: 5.0,
+        volume: 5,
         unit: "mL",
-        storageLocation: `Freezer A, Shelf 1, Box ${Math.ceil(i / 2)}`,
-        status: i === 3 ? "QUARANTINED" : "OK", // Make aliquot 3 quarantined for demo
-        code,
+        concentration: 10,
+        status: i === 3 ? "QUARANTINED" : "PENDING_QC",
+        createdById: user.id,
       },
     });
-
-    aliquots.push(aliquot);
-    console.log(`Created aliquot: ${code}`);
+    aliquots.push(a);
+    console.log(`Created aliquot: ${aliquotId}`);
   }
 
-  // Create an experiment and link aliquots
+  const freezer = await prisma.freezer.create({
+    data: { name: "Freezer A" },
+  });
+  const box = await prisma.box.create({
+    data: { freezerId: freezer.id, name: "Shelf 1", rows: 8, cols: 12 },
+  });
+  await prisma.aliquot.update({
+    where: { id: aliquots[0].id },
+    data: { freezerId: freezer.id, boxId: box.id, position: "A1" },
+  });
+  await prisma.aliquot.update({
+    where: { id: aliquots[1].id },
+    data: { freezerId: freezer.id, boxId: box.id, position: "A2" },
+  });
+  console.log("Created Freezer A, Box Shelf 1, assigned positions A1–A2");
+
   const experiment = await prisma.experiment.create({
     data: {
       title: "Cell Culture Optimization Study",
       performedDate: new Date("2024-02-01"),
-      operator: "Dr. Jane Smith",
-      notes: "Testing different serum concentrations for optimal growth",
+      ownerId: user.id,
+      notes: "Testing different serum concentrations",
+      outputs: JSON.stringify([
+        { url: "https://example.com/fig1", label: "Figure 1" },
+      ]),
     },
   });
-
   console.log(`Created experiment: ${experiment.title}`);
 
-  // Link first 3 aliquots to the experiment
   for (let i = 0; i < 3; i++) {
     await prisma.experimentAliquot.create({
       data: {
@@ -72,14 +108,11 @@ async function main() {
       },
     });
   }
-
   console.log("Linked 3 aliquots to experiment");
 
   console.log("\n✅ Seeding completed!");
-  console.log(`\nYou can now:`);
-  console.log(`- View batches at /batches`);
-  console.log(`- View experiments at /experiments`);
-  console.log(`- Mark aliquot ${aliquots[2].code} as CONTAMINATED to see blast radius`);
+  console.log("Login: demo@example.com / demo1234");
+  console.log("- Batches, Samples, Aliquots, Experiments, Storage, Alerts, Import/Export");
 }
 
 main()
@@ -90,4 +123,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

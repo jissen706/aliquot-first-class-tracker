@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Aliquot First-Class MVP – sample + aliquot traceability layer
+// Prisma 6 + SQLite
 
 datasource db {
   provider = "sqlite"
@@ -10,75 +10,210 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Batch {
-  id           String    @id @default(cuid())
-  vendor       String
-  productName  String
-  catalogNumber String?
-  lotNumber    String
-  receivedDate DateTime
-  expiryDate   DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+// ---------- Users ----------
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  aliquots     Aliquot[]
-
-  @@index([lotNumber])
-  @@index([vendor])
+  createdAliquots   Aliquot[]
+  experiments       Experiment[]
+  auditLogs         AuditLog[]
+  acknowledgedAlerts AlertExperiment[]
 }
 
+// ---------- Batches (QC at batch level) ----------
+enum BatchQCStatus {
+  PENDING_QC
+  RELEASED_QC_PASSED
+  FAILED_QC
+}
+
+model Batch {
+  id            String        @id @default(cuid())
+  lotNumber     String
+  manufacturer  String?
+  supplierName  String?
+  supplierUrl   String?
+  qcStatus      BatchQCStatus @default(PENDING_QC)
+  receivedDate  DateTime?
+  expiryDate    DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  samples  Sample[]
+  aliquots Aliquot[]
+
+  @@index([lotNumber])
+  @@index([qcStatus])
+}
+
+// ---------- Samples (parent stock) ----------
+model Sample {
+  id             String   @id @default(cuid())
+  name           String
+  typeCategory   String?  // free text: type/category
+  batchId        String
+  manufacturer   String?
+  supplierName   String?
+  supplierUrl    String?
+  creationDate   DateTime @default(now())
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  batch    Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  aliquots Aliquot[]
+
+  @@index([batchId])
+  @@index([name])
+}
+
+// ---------- Aliquots ----------
 enum AliquotStatus {
-  OK
+  PENDING_QC
+  RELEASED_QC_PASSED
   QUARANTINED
   CONTAMINATED
   CONSUMED
 }
 
 model Aliquot {
-  id             String         @id @default(cuid())
-  batchId        String
-  madeDate       DateTime
-  aliquotIndex   Int
-  volume         Float?
-  unit           String?
-  storageLocation String?
-  status         AliquotStatus  @default(OK)
-  code           String         @unique
-  createdAt      DateTime       @default(now())
+  id            String         @id @default(cuid())
+  aliquotId     String         @unique // human-readable, barcode/QR
+  sampleId      String
+  batchId       String
+  volume        Float?
+  concentration Float?
+  unit          String?
+  createdById   String?
+  status        AliquotStatus  @default(PENDING_QC)
+  freezerId     String?
+  boxId         String?
+  position      String?        // e.g. A1
+  createdAt     DateTime       @default(now())
 
-  batch          Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sample   Sample   @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  batch    Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  freezer  Freezer? @relation(fields: [freezerId], references: [id], onDelete: SetNull)
+  box      Box?     @relation(fields: [boxId], references: [id], onDelete: SetNull)
+
   experimentAliquots ExperimentAliquot[]
 
+  @@index([sampleId])
   @@index([batchId])
-  @@index([code])
+  @@index([aliquotId])
   @@index([status])
-  @@index([madeDate])
-  @@index([batchId, madeDate, aliquotIndex])
+  @@unique([boxId, position])
 }
 
+// ---------- Storage: Freezer -> Box -> Position ----------
+model Freezer {
+  id    String   @id @default(cuid())
+  name  String
+  boxes Box[]
+  aliquots Aliquot[]
+}
+
+model Box {
+  id        String   @id @default(cuid())
+  freezerId String
+  name      String
+  rows      Int      @default(8)
+  cols      Int      @default(12)
+  freezer   Freezer  @relation(fields: [freezerId], references: [id], onDelete: Cascade)
+  aliquots  Aliquot[]
+
+  @@index([freezerId])
+}
+
+// ---------- Experiments (lightweight linking) ----------
 model Experiment {
-  id            String            @id @default(cuid())
+  id            String   @id @default(cuid())
   title         String
+  ownerId       String
   performedDate DateTime
-  operator      String?
   notes         String?
-  createdAt     DateTime          @default(now())
+  outputs       String?  // JSON: [{url, label}]
+  createdAt     DateTime @default(now())
 
-  aliquots      ExperimentAliquot[]
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  aliquots ExperimentAliquot[]
+  alertExperiments AlertExperiment[]
 
+  @@index([ownerId])
   @@index([performedDate])
 }
 
 model ExperimentAliquot {
-  experimentId  String
-  aliquotId     String
-  usageNotes    String?
-  addedAt       DateTime          @default(now())
+  experimentId String
+  aliquotId    String
+  usageNotes   String?
+  addedAt      DateTime @default(now())
 
-  experiment    Experiment        @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  aliquot       Aliquot           @relation(fields: [aliquotId], references: [id], onDelete: Cascade)
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  aliquot    Aliquot    @relation(fields: [aliquotId], references: [id], onDelete: Cascade)
 
   @@id([experimentId, aliquotId])
   @@index([aliquotId])
+}
+
+// ---------- Alerts & Impact tracking ----------
+enum AlertType {
+  CONTAMINATION
+  QC_FAILURE
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  type        AlertType
+  entityType  String    // ALIQUOT | BATCH
+  entityId    String
+  title       String
+  message     String?
+  createdAt   DateTime  @default(now())
+  createdById String?
+  readAt      DateTime?
+
+  experiments AlertExperiment[]
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model AlertExperiment {
+  alertId          String
+  experimentId     String
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+
+  alert      Alert      @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  acknowledgedBy User?   @relation(fields: [acknowledgedById], references: [id], onDelete: SetNull)
+
+  @@id([alertId, experimentId])
+  @@index([experimentId])
+}
+
+// ---------- Audit / history log ----------
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  userId     String?
+  reason     String?
+  metadata   String?  // JSON
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
