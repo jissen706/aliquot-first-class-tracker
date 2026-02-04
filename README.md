@@ -1,8 +1,10 @@
 # Aliquot First-Class
 
-A lightweight **sample + aliquot traceability** MVP for small academic biology labs. Answer *"where did it go and who used it?"* in under 30 seconds. Excel-first adoption, scientist-friendly naming, desktop/iPad-friendly.
+A lightweight **sample + aliquot traceability** system for small academic biology labs. Answer *"where did it go and who used it?"* in under 30 seconds. Excel-first adoption, scientist-friendly naming, desktop/iPad-friendly.
 
 **Not** a full ELN/LIMS. Use alongside Excel and lab notebooks.
+
+---
 
 ## Problem Statement
 
@@ -10,28 +12,54 @@ A lightweight **sample + aliquot traceability** MVP for small academic biology l
 - **Aliquot-level truth**: Individual aliquots from batches, uniquely traceable.
 - When something goes wrong: quickly see **Impact** (experiments, users, outputs) and support QC release / fail flows.
 
-## Features (MVP)
+---
 
+## Features
+
+### Core Traceability
 - **Samples** (parent stock): name, type/category, batch, manufacturer, supplier (name + URL).
-- **Aliquots**: linked to sample, batch; volume, concentration; status (Pending QC, Released/QC Passed, Quarantined, Contaminated, Consumed); storage Freezer → Box → Position (grid).
+- **Aliquots**: linked to sample and batch; volume, concentration; status (Pending QC, Released/QC Passed, Quarantined, Contaminated, Consumed); storage Freezer → Box → Position (grid).
 - **Experiments**: title, owner, date, notes; attach aliquots; optional outputs (JSON `[{url, label}]`).
-- **Batches**: lot, manufacturer, supplier, QC status. **Release batch** (QC Passed) or **Fail QC** (quarantine aliquots, flag experiments).
-- **Impact panel**: sibling aliquots, experiments using aliquot/batch, affected users, outputs to review.
+
+### Batch & QC Workflows
+- **Batches**: lot, manufacturer, supplier, QC status.
+- **Release batch** (QC Passed) or **Fail QC** → quarantine aliquots, flag experiments, create alerts.
+
+### Impact & Alerts
+- **Impact panel**: sibling aliquots (same batch), experiments using aliquot/batch, affected users, outputs to review.
 - **Mark contaminated** (aliquot) / **Fail QC** (batch) → alerts, affected experiments, **Acknowledged** per experiment.
-- **Storage**: Freezers, Boxes (e.g. 8×12), grid view; assign positions to aliquots.
-- **Labels**: PDF + XLSX (sample name, aliquot ID, concentration, date, QR).
-- **Import/Export**: XLSX templates, import wizard (preview + commit), export Samples/Aliquots/Experiments/Impact.
-- **Auth**: email/password (MVP). Design allows adding SSO later.
-- **Alerts**: in-app list; email stubbed (log/DB).
+- **Alerts**: in-app notification center; per-experiment acknowledgement tracking.
+
+### Storage
+- **Storage**: Freezers, Boxes (e.g. 8×12 grid), grid view.
+- **Assign positions** to aliquots on a box grid.
+
+### Labels
+- **Labels**: PDF + XLSX (sample name, aliquot ID, concentration, date, QR codes).
+
+### Import / Export
+- **Import**: XLSX templates, import wizard with **preview + commit** (samples or aliquots).
+- **Export**: Samples, Aliquots, Experiments, Impact data as XLSX.
+
+### Search
+- **Search**: by aliquot ID, sample name, or batch lot number.
+
+### Auth & Audit
+- **Auth**: email/password (NextAuth Credentials + JWT). Protected routes.
 - **Audit log**: status changes, QC actions (timestamp, user, reason).
+- Email notifications stubbed (log/DB); replace with real provider when needed.
+
+---
 
 ## Tech Stack
 
-- Next.js 16 (App Router, TypeScript), Tailwind CSS
-- Prisma 6 + SQLite (Pin Prisma 6; avoid config-mode/Prisma 7)
-- Zod, React Hook Form, Server Actions
-- NextAuth (Credentials + JWT)
-- pdf-lib, qrcode, exceljs
+- **Next.js 16** (App Router, TypeScript), Tailwind CSS 4
+- **Prisma 6** + SQLite
+- **Zod**, React Hook Form, Server Actions
+- **NextAuth** (Credentials + JWT)
+- **pdf-lib**, **qrcode**, **exceljs**
+
+---
 
 ## Setup
 
@@ -68,8 +96,11 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Register or use seed user:
 
-- **Email:** `demo@example.com`  
-- **Password:** `demo1234`
+| Email | Password |
+|-------|----------|
+| `demo@example.com` | `demo1234` |
+
+---
 
 ## Scripts
 
@@ -81,6 +112,8 @@ Open [http://localhost:3000](http://localhost:3000). Register or use seed user:
 | `npm run prisma:studio` | Open Prisma Studio |
 | `npm run prisma:migrate` | Run migrations |
 | `npm run seed` | Seed demo data |
+
+---
 
 ## Routes
 
@@ -97,6 +130,8 @@ Open [http://localhost:3000](http://localhost:3000). Register or use seed user:
 | `/import-export` | Templates, import wizard, exports |
 | `/search?q=` | Search aliquot ID, sample name, batch |
 
+---
+
 ## Demo Flow
 
 1. Log in as `demo@example.com` / `demo1234`.
@@ -107,6 +142,8 @@ Open [http://localhost:3000](http://localhost:3000). Register or use seed user:
 6. **Aliquot** → **Mark as contaminated** → check **Impact**; open experiment → **Acknowledge**.
 7. **Batch** → **Release batch** or **Fail QC** → see Impact, alerts.
 8. **Import/Export** → download templates, import, export; **Labels** PDF/XLSX.
+
+---
 
 ## Schema Overview
 
@@ -120,11 +157,15 @@ Open [http://localhost:3000](http://localhost:3000). Register or use seed user:
 - **AuditLog**: entityType, entityId, action, userId, reason, metadata.
 - **Freezer**, **Box** (rows/cols), aliquots reference box + position.
 
+---
+
 ## Compliance / Scope
 
 - No auth claims, no permissions model, no compliance framework.
 - No proximity-based contamination; impact is via **which experiments used the aliquot/batch**.
 - Email notifications are stubbed (console/DB); replace with real provider when needed.
+
+---
 
 ## License
 
